@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+hf-cache/
+out-*/
+*.mlpackage/
+*.mlmodelc/
+logs/
