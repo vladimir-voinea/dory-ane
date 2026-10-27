@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dory on the ANE</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1115; --panel:#171a21; --line:#262b36;
+          --text:#e7e9ee; --muted:#8b93a7; --accent:#7c9cff; --think:#9aa4b8; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         display:flex; flex-direction:column; height:100vh; }
+  header { display:flex; gap:14px; align-items:center; padding:12px 18px;
+           border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.2px; }
+  .pill { font-size:12px; color:var(--muted); border:1px solid var(--line);
+          border-radius:999px; padding:3px 10px; }
+  .pill b { color:var(--text); font-weight:600; }
+  .controls { margin-left:auto; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  label { font-size:12px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+  input[type=range] { width:92px; accent-color:var(--accent); }
+  button { background:var(--accent); color:#0b0d12; border:0; border-radius:8px;
+           padding:8px 14px; font-weight:600; cursor:pointer; font-size:13px; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:default; }
+  main { flex:1; overflow-y:auto; padding:22px 18px 8px; }
+  .wrap { max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+  .msg { display:flex; gap:12px; align-items:flex-start; }
+  .who { flex:0 0 30px; height:30px; border-radius:8px; display:grid; place-items:center;
+         font-size:12px; font-weight:700; border:1px solid var(--line); color:var(--muted); }
+  .msg.user .who { background:#1e2430; }
+  .msg.assistant .who { background:#182036; color:var(--accent); border-color:#2b3a63; }
+  .body { flex:1; min-width:0; }
+  .body .text { white-space:pre-wrap; word-wrap:break-word; }
+  .think { margin:0 0 8px; padding:8px 12px; border-left:2px solid var(--line);
+           color:var(--think); font-size:13px; white-space:pre-wrap; max-height:220px;
+           overflow:auto; display:none; }
+  .think.show { display:block; }
+  .meta { margin-top:6px; font-size:11px; color:var(--muted); }
+  footer { border-top:1px solid var(--line); background:var(--panel); padding:12px 18px; }
+  .composer { max-width:820px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; }
+  textarea { flex:1; resize:none; background:var(--bg); color:var(--text);
+             border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+             font:inherit; max-height:160px; min-height:44px; }
+  textarea:focus { outline:1px solid #2b3a63; }
+  .hint { max-width:820px; margin:6px auto 0; font-size:11px; color:var(--muted); display:flex;
+          gap:14px; flex-wrap:wrap; }
+  .err { color:#ff9c9c; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dory 1.0 4B</h1>
+  <span class="pill">Apple Neural Engine</span>
+  <span class="pill" id="ctx">context <b>—</b></span>
+  <span class="pill" id="sess">session <b>—</b></span>
+  <div class="controls">
+    <label>temp <input id="temp" type="range" min="0" max="1.2" step="0.05" value="0.6">
+      <b id="tempv">0.60</b></label>
+    <label><input id="think" type="checkbox"> thinking</label>
+    <button class="ghost" id="reset">New chat</button>
+  </div>
+</header>
+<main id="main"><div class="wrap" id="log"></div></main>
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Message Dory…  (Enter to send, Shift+Enter for a newline)"></textarea>
+    <button id="send">Send</button>
+  </div>
+  <div class="hint">
+    <span id="stats">idle</span>
+    <span>prefix cache keeps history — later turns only feed the delta</span>
+  </div>
+</footer>
+<script>
+const log = document.getElementById("log");
+const input = document.getElementById("input");
+const send = document.getElementById("send");
+const tempEl = document.getElementById("temp");
+const tempv = document.getElementById("tempv");
+const thinkEl = document.getElementById("think");
+const statsEl = document.getElementById("stats");
+let sessionId = localStorage.getItem("dory-session") || "ui-" + Math.random().toString(36).slice(2,10);
+let messages = JSON.parse(localStorage.getItem("dory-messages") || "[]");
+localStorage.setItem("dory-session", sessionId);
+document.getElementById("sess").innerHTML = "session <b>" + sessionId.slice(0,10) + "</b>";
+
+tempEl.oninput = () => { tempv.textContent = Number(tempEl.value).toFixed(2); };
+
+function bubble(role) {
+  const row = document.createElement("div");
+  row.className = "msg " + role;
+  row.innerHTML = '<div class="who">' + (role === "user" ? "you" : "dory") + '</div>' +
+                  '<div class="body"><div class="think"></div><div class="text"></div>' +
+                  '<div class="meta"></div></div>';
+  log.appendChild(row);
+  row.scrollIntoView({ block: "end" });
+  return { think: row.querySelector(".think"), text: row.querySelector(".text"),
+           meta: row.querySelector(".meta") };
+}
+
+function render() {
+  log.innerHTML = "";
+  for (const m of messages) {
+    const b = bubble(m.role);
+    if (m.reasoning) { b.think.textContent = m.reasoning; b.think.classList.add("show"); }
+    b.text.textContent = m.content;
+  }
+}
+
+async function ask(text) {
+  messages.push({ role: "user", content: text });
+  render();
+  input.value = ""; input.style.height = "auto";
+  send.disabled = true;
+  const b = bubble("assistant");
+  b.text.textContent = "…";
+  let content = "", reasoning = "";
+  const system = { role: "system", content:
+    "You are Dory 1.0, a 4B language model running entirely on this laptop's Apple " +
+    "Neural Engine through Core ML at a 24,576-token context. If asked what you are " +
+    "running on, say that. Answer helpfully and concisely." };
+  try {
+    const response = await fetch("/v1/chat/completions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [system, ...messages], session_id: sessionId,
+                            max_tokens: 512, temperature: Number(tempEl.value),
+                            top_p: 0.95, enable_thinking: thinkEl.checked, stream: true })
+    });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "", finished = false;
+    while (!finished) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") { finished = true; break; }
+        let chunk; try { chunk = JSON.parse(payload); } catch (e) { continue; }
+        const choice = (chunk.choices && chunk.choices[0]) || {};
+        const delta = choice.delta || {};
+        if (choice.finish_reason) { finished = true; }
+        if (delta.content) { content += delta.content; b.text.textContent = content; }
+        if (delta.reasoning_content) {
+          reasoning += delta.reasoning_content;
+          b.think.textContent = reasoning; b.think.classList.add("show");
+        }
+        if (chunk.stats) {
+          const s = chunk.stats;
+          b.meta.textContent = s.completion_tokens + " tok · " +
+            (s.decode_tokens_per_second || "?") + " tok/s · reused " + s.prefix_reused +
+            " of " + s.prompt_tokens + " prompt tokens";
+          statsEl.textContent = s.decode_tokens_per_second + " tok/s · cache hit " +
+            s.prefix_reused + "/" + s.prompt_tokens;
+        }
+        b.text.scrollIntoView({ block: "end" });
+      }
+    }
+    try { reader.cancel(); } catch (e) {}
+  } catch (err) {
+    b.text.innerHTML = '<span class="err">' + err.message + "</span>";
+  } finally {
+    send.disabled = false; input.focus();
+  }
+  messages.push({ role: "assistant", content, reasoning });
+  localStorage.setItem("dory-messages", JSON.stringify(messages));
+}
+
+send.onclick = () => { const t = input.value.trim(); if (t && !send.disabled) ask(t); };
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send.onclick(); }
+});
+input.addEventListener("input", () => {
+  input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px";
+});
+document.getElementById("reset").onclick = async () => {
+  await fetch("/v1/sessions/" + sessionId, { method: "DELETE" }).catch(() => {});
+  sessionId = "ui-" + Math.random().toString(36).slice(2,10);
+  localStorage.setItem("dory-session", sessionId);
+  document.getElementById("sess").innerHTML = "session <b>" + sessionId.slice(0,10) + "</b>";
+  messages = []; localStorage.removeItem("dory-messages"); render();
+};
+fetch("/health").then(r => r.json()).then(h => {
+  document.getElementById("ctx").innerHTML = "context <b>" + h.context_length.toLocaleString() + "</b>";
+}).catch(() => {});
+render();
+if (!messages.length) {
+  const b = bubble("assistant");
+  b.text.textContent = "Ready. This is Dory 1.0 4B running on the Neural Engine at 24,576 tokens of context.";
+}
+input.focus();
+</script>
+</body>
+</html>

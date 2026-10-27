@@ -214,7 +214,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Transfer-Encoding", "chunked")
-        self.send_header("Connection", "keep-alive")
+        # Both signals, deliberately: clients disagree about which one ends the reply.
+        # A chunked body has an explicit terminator, and closing the socket after it
+        # also ends the body for parsers that only watch for EOF (pi did).
+        self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         reply_id = "chatcmpl-" + uuid.uuid4().hex[:24]
@@ -291,6 +294,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._raw_chunk_end()
             except Exception:  # noqa: BLE001 - the client is gone
                 pass
+            self.close_connection = True
             # A client can leave mid-stream.  Close the generator first: it holds the
             # engine lock for the length of the turn, so a suspended generator makes
             # every later request wait on a turn whose client is gone (measured: the
