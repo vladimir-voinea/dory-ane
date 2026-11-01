@@ -1597,6 +1597,8 @@ def parse_args(argv=None):
     parser.add_argument("--no-placement-check", action="store_true",
                         help="skip the per-function ANE placement gate (never do this for a gate)")
     parser.add_argument("--no-compile", action="store_true", help="skip the .mlmodelc step")
+    parser.add_argument("--resume", action="store_true",
+                        help="skip a function whose package already exists and verifies")
     parser.add_argument("--only", default=None,
                         help="comma-separated component names (default: all)")
     parser.add_argument("--full-tile-rows", default=None,
@@ -1666,7 +1668,8 @@ def main(argv=None) -> int:
         lut_blocks=args.lut_blocks, lut_lm_head=args.lut_lm_head,
         lut_embeddings=args.lut_embeddings, lut_per_channel=args.lut_per_channel,
         lm_head_splits=args.lm_head_splits, recurrent_splits=args.recurrent_splits,
-        argmax=args.argmax, check_placement=not args.no_placement_check)
+        argmax=args.argmax, check_placement=not args.no_placement_check,
+        resume=args.resume)
     try:
         result = converter.run(only=args.only, dry_run=args.dry_run,
                                do_compile=not args.no_compile)
