@@ -6,10 +6,10 @@ expect from a normal inference engine, on a laptop NPU.
 
 | | |
 |---|---|
-| decode, `loops=1` | **11.3 tok/s** (4-bit) · 5.9 tok/s (fp16) |
+| decode, `loops=1` | **11.3 tok/s** (6-bit, the published model) · 5.9 tok/s (fp16) |
 | prefill (batch) | 130 tok/s |
 | context | 24,576 tokens, 999 MiB of ANE state |
-| quality | KLD 0.019–0.056 vs the reference model (fp16), top-1 87.5–100 % |
+| quality vs the reference | 6-bit: KLD 0.077–0.632, top-1 62.5–100 % · fp16: KLD 0.019–0.056, top-1 87.5–100 % |
 | load | 21 s |
 
 It holds a conversation, calls tools, and answers correctly. Two hardware constraints
@@ -21,7 +21,7 @@ prefill and decode package sets take turns rather than living together).
 
 * a Mac with an Apple Neural Engine, macOS 14 or newer
 * Python 3.12
-* the converted model: `huggingface-cli download vladimir-voinea/dory-1.0-4b-ane-coreml`
+* the converted model: `huggingface-cli download vladimir94/dory-1.0-4b-ane-coreml --local-dir dory-1.0-4b-ane-coreml`
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
@@ -81,10 +81,10 @@ HF_HOME=./hf-cache python -m anemll.ane_converter.dory_converter \
   --model /path/to/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16 \
   --output out-24k --context-length 24576 --batch-size 64 \
   --per-head-programs --heads-per-state 1 --slots-per-sliding-carrier 1 \
-  --rope-tables-as-inputs --lut-blocks 4
+  --rope-tables-as-inputs --lut-blocks 6
 ```
 
-Without palettization (`--lut-blocks none`) the conversion takes ~7 minutes; with 4-bit
+Without palettization (`--lut-blocks none`) the conversion takes ~7 minutes; with 6-bit
 palettes it takes hours, so measure first and compress last.
 
 ## The four rules that decide whether a program loads
@@ -125,6 +125,6 @@ tests/                  unit tests; the runtime ones use a toy plan and need no 
 
 ## Provenance
 
-The model is a conversion and 4-bit palettization of
+The model is a conversion and 6-bit palettization of
 [nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16);
 see its licence. The converter and runtime build on [Anemll](https://github.com/Anemll/Anemll).
