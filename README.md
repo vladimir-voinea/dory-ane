@@ -17,6 +17,10 @@ shape everything: a Core ML state cannot be copied or truncated (so the cache is
 session and reused by extension), and ~102 packages is the resident ceiling (so the
 prefill and decode package sets take turns rather than living together).
 
+A newer build with engine numeric fixes and 8-bit weights cuts mean KLD from 0.098 to 0.0145
+(top-1 88.3 % to 94.1 %) at about 6 % less speed and 7.6 GB instead of 5.6; see
+[docs/dory-port/STATUS.md](docs/dory-port/STATUS.md). Build it with `--lut-blocks 8 --lut-lm-head 8`.
+
 ## What you need
 
 * a Mac with an Apple Neural Engine, macOS 14 or newer

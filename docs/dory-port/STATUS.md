@@ -3,6 +3,25 @@
 **Dory1.0-4B runs on the Neural Engine at a 24,576-token context** and produces coherent text.
 This file is what a reader needs before the detail in `findings/` and `plans/`.
 
+## Engine numeric fixes and LUT8 (2026-11)
+
+Comparing each stage of a block between the Neural Engine and the CPU found two places where the
+engine loses accuracy: a projection whose inputs are small (every L2 norm over thousands of channels
+makes them small), and silu/sigmoid. `DoryL2Norm` before `o_proj` and `down_proj` now scales its
+output by 16, which `norm_out` cancels because L2 is scale invariant once its epsilon scales too.
+silu and sigmoid use their tanh forms. A real MLP block on the engine went from 1.3-1.9 % to
+0.10-0.19 % against exact arithmetic.
+
+Against the PyTorch model, positions 64-319 of the fixed evaluation set, 2 loops, decode mode:
+
+| build | mean KLD | median KLD | p90 KLD | top-1 | decode, 200 tokens incl. prefill | size |
+|---|---|---|---|---|---|---|
+| published LUT6 | 0.0979 | 0.0290 | 0.271 | 88.3 % | 9.3 tok/s | 5.6 GB |
+| **LUT8 with the fixes** | **0.0145** | **0.0039** | **0.032** | **94.1 %** | 8.7 tok/s | 7.6 GB |
+
+The window at position 12,288 of the 24K reference is repeated text (perplexity 1.005), so it no
+longer distinguishes builds. The table below is the earlier sweep, before the fixes.
+
 ## The measured quality/speed curve
 
 Four configurations of the same 102-program plan at 24,576 tokens, differing only in weight format.
