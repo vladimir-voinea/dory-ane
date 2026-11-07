@@ -1,0 +1,113 @@
+{
+ "messages": [
+  {
+   "role": "user",
+   "content": "What is 17 times 23? Answer with just the number."
+  }
+ ],
+ "template": {
+  "source": "NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16 chat_template.jinja (= tokenizer.chat_template in the GGUF)",
+  "sha256": "82753bef5cedc4932c1ed509b5c9a12be680fd86d1adb65bc3f7398d11c8eebc",
+  "kwargs": {
+   "enable_thinking": true,
+   "add_generation_prompt": true
+  }
+ },
+ "prompt_text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nWhat is 17 times 23? Answer with just the number.<|im_end|>\n<|im_start|>assistant\n<think>\n",
+ "prompt_tokens": [
+  10,
+  25708,
+  1010,
+  11,
+  1010,
+  10,
+  3263,
+  1010,
+  7493,
+  1395,
+  1032,
+  1049,
+  1055,
+  5213,
+  1032,
+  1050,
+  1051,
+  1063,
+  3450,
+  1454,
+  2586,
+  1278,
+  2782,
+  1046,
+  11,
+  1010,
+  10,
+  1503,
+  19464,
+  1010,
+  12,
+  1010
+ ],
+ "llamacpp_prompt_tokens": 32,
+ "loops": 2,
+ "greedy_tokens": [
+  1784,
+  3330,
+  1395,
+  16798,
+  1394,
+  1278,
+  3935,
+  1307,
+  1032,
+  1049,
+  1055,
+  1321,
+  1032,
+  1050,
+  1051,
+  1046,
+  4159,
+  2933,
+  1278,
+  4832,
+  1454,
+  2586,
+  1278,
+  2782,
+  1044,
+  1836,
+  7185,
+  3403,
+  1338,
+  12598,
+  1639,
+  16716
+ ],
+ "greedy_text": "The user is asking for the product of 17 and 23. They want the answer with just the number, no extra text.\n\nLet me calculate",
+ "llamacpp": {
+  "binary": "/Users/vladimir/.unsloth/llama.cpp-dory/build/bin/llama-server",
+  "gguf": "/Users/vladimir/.cache/huggingface/hub/models--cloudnathan5--Dory1.0-4B-GGUF/snapshots/9abcb0453c0382e6852fb57893102a7ed0fe17be/Dory1.0-4B-BF16.gguf",
+  "temperature": 0,
+  "n_predict": 32,
+  "ubatch": 64,
+  "batch": 64
+ },
+ "provenance": {
+  "tool": "llama-server (llama.cpp + PR #30306 side build)",
+  "llama_cpp_commit": "cbf6482d7",
+  "gguf_sha256": "575e0face224e86294f4597e46308419932d795c4435125e1fd12e73dcc30ccd",
+  "overrides": {
+   "dory.num_loops": 2
+  },
+  "sampling": {
+   "temperature": 0.0,
+   "top_k": 1,
+   "seed": 0
+  },
+  "batch": 64,
+  "ubatch": 64,
+  "n_predict": 32,
+  "note": "greedy decode of the chat-template prompt with the repo's template (chat_template.jinja, enable_thinking=true); server reported tokens_evaluated == len(prompt_tokens) == 32, so both sides tokenized the prompt identically"
+ }
+}

@@ -3,6 +3,25 @@
 **Dory1.0-4B runs on the Neural Engine at a 24,576-token context** and produces coherent text.
 This file is what a reader needs before the detail in `findings/` and `plans/`.
 
+## Engine numeric fixes and LUT8 (2026-11)
+
+Comparing each stage of a block between the Neural Engine and the CPU found two places where the
+engine loses accuracy: a projection whose inputs are small (every L2 norm over thousands of channels
+makes them small), and silu/sigmoid. `DoryL2Norm` before `o_proj` and `down_proj` now scales its
+output by 16, which `norm_out` cancels because L2 is scale invariant once its epsilon scales too.
+silu and sigmoid use their tanh forms. A real MLP block on the engine went from 1.3-1.9 % to
+0.10-0.19 % against exact arithmetic.
+
+Against the PyTorch model, positions 64-319 of the fixed evaluation set, 2 loops, decode mode:
+
+| build | mean KLD | median KLD | p90 KLD | top-1 | decode, 200 tokens incl. prefill | size |
+|---|---|---|---|---|---|---|
+| published LUT6 | 0.0979 | 0.0290 | 0.271 | 88.3 % | 9.3 tok/s | 5.6 GB |
+| **LUT8 with the fixes** | **0.0145** | **0.0039** | **0.032** | **94.1 %** | 8.7 tok/s | 7.6 GB |
+
+The window at position 12,288 of the 24K reference is repeated text (perplexity 1.005), so it no
+longer distinguishes builds. The table below is the earlier sweep, before the fixes.
+
 ## The measured quality/speed curve
 
 Four configurations of the same 102-program plan at 24,576 tokens, differing only in weight format.
@@ -16,7 +35,7 @@ two windows of the fixed evaluation set.
 | MLP fp16, attention LUT6 | 5.86 | 0.099 | 100 % | 0.017 | 87.5 % | rambles |
 | all LUT6 | **10.71** | 0.632 | 62.5 % | 0.077 | 100 % | rambles |
 
-The Pareto frontier is the two ends: full precision buys faithfulness, 4-bit buys 1.8× the throughput.
+The Pareto frontier is the two ends: full precision buys faithfulness, 6-bit buys 1.8× the throughput.
 Neither hybrid beats either end, because the MLP holds most of the bytes and most of the error.
 
 **The rates.** At 24,576 tokens with `loops = 1`: load 21 s, prefill **130 tok/s** steady state,
@@ -115,7 +134,7 @@ rejoins the slices in order.
 python -m anemll.ane_converter.dory_converter \
   --model <dory-bf16-dir> --output out-24k --context-length 24576 --batch-size 64 \
   --per-head-programs --heads-per-state 1 --slots-per-sliding-carrier 1 \
-  --rope-tables-as-inputs --lut-blocks none          # fp16; use 6 for 4-bit
+  --rope-tables-as-inputs --lut-blocks none          # fp16; use 6 for the published 6-bit set
 
 python -m anemll.runtime.dory_ane_runtime run \
   --model-dir out-24k --prompt "The capital of France is" --max-tokens 24 --loops 1

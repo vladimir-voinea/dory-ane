@@ -1,0 +1,35 @@
+{
+  "name": "dory-eval",
+  "chunk_size": 4096,
+  "n_chunks": 2,
+  "n_tokens": 8192,
+  "n_scored_rows": 4094,
+  "source": {
+    "url": "https://www.gutenberg.org/cache/epub/1342/pg1342.txt",
+    "sha256": "3f6bb9d6f78e0293b56acd4714dd68cb7d6d1d293402031ce9d5a216bcaf9d75",
+    "licence": "public domain (Project Gutenberg, United States)",
+    "edition": "Pride and Prejudice, Project Gutenberg eBook #1342"
+  },
+  "tokenizer": {
+    "name": "Dory1.0-4B tokenizer (tokenizer.json from the NVIDIA BF16 release)",
+    "vocab_size": 131072,
+    "path": "/Users/vladimir/.cache/huggingface/hub/models--nvidia--NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16/snapshots/b366b87f762ea334ba3eb55912031baba1515810",
+    "add_special_tokens": false
+  },
+  "excerpts": [
+    {
+      "excerpt": 0,
+      "heading": "Chapter I.]",
+      "body_char_offset": 34279,
+      "token_shift": 0
+    },
+    {
+      "excerpt": 1,
+      "heading": "Chapter XLVI.",
+      "body_char_offset": 515167,
+      "token_shift": 0
+    }
+  ],
+  "text_sha256": "df125d003f2a6e3f622a1e9d1320a5b4eec8715252cf55c7d159dbb0141dc122",
+  "tokens_sha256": "3ed2f50fd845be4f601af9a313a6bbf5c5a1e0eda8253f8de07d06d20b367df7"
+}

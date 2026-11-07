@@ -160,6 +160,11 @@ class DoryANEConfig:
         self.alpha_init = g("alpha_init", 0.05)
         self.gate_init = g("gate_init", 50.59644317626953)
         self.l2_eps = g("l2_eps", 1e-6)
+        # The Neural Engine loses accuracy on a projection whose input values are small, and an L2
+        # norm over thousands of channels makes them small.  So the norms before o_proj and
+        # down_proj scale their output by this, and norm_out cancels it: L2 is scale invariant
+        # once its epsilon scales too.
+        self.projection_scale = g("projection_scale", 16.0)
         self.context_length = g("context_length", 512)
 
         # Spec D7: one full-attention cache of context_length rows, or the
@@ -261,6 +266,16 @@ class DoryANEConfig:
 # Building blocks
 # ---------------------------------------------------------------------------
 
+def silu_engine(x: torch.Tensor) -> torch.Tensor:
+    """silu in a form the Neural Engine computes accurately; its own silu loses ~1 %."""
+    return 0.5 * x * (1 + torch.tanh(0.5 * x))
+
+
+def sigmoid_engine(x: torch.Tensor) -> torch.Tensor:
+    """sigmoid in the form silu_engine uses."""
+    return 0.5 * (1 + torch.tanh(0.5 * x))
+
+
 class DoryL2Norm(nn.Module):
     """L2 normalisation as ANEMLL's layer-norm-based RMSNorm divided by sqrt(dim).
 
@@ -275,11 +290,11 @@ class DoryL2Norm(nn.Module):
     (math-dory.md 9 / G7).
     """
 
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-6, output_scale: float = 1.0):
         super().__init__()
         self.dim = int(dim)
         self.variance_epsilon = float(eps) / float(dim)
-        self.out_scale = 1.0 / math.sqrt(float(dim))
+        self.out_scale = float(output_scale) / math.sqrt(float(dim))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         doubled = torch.cat([hidden_states, -hidden_states], dim=-1)
@@ -540,7 +555,8 @@ class DoryANEAttention(nn.Module):
         self.q_norm = DoryL2Norm(self.head_dim, config.l2_eps)
         self.k_norm = DoryL2Norm(self.head_dim, config.l2_eps)
         self.out_norm = (None if no_tail else
-                         DoryL2Norm(self.num_heads * self.head_dim, config.l2_eps))
+                         DoryL2Norm(self.num_heads * self.head_dim, config.l2_eps,
+                                    config.projection_scale))
 
         # sqk stays an elementwise multiply -- it follows an L2 norm (spec D5).
         self.register_buffer("sq", torch.zeros(self.q_channels, dtype=dt))
@@ -634,7 +650,7 @@ class DoryANEAttention(nn.Module):
             gate = _from_conv_layout(self.g_proj(conv_in))          # (B, Q, 4096)
             if self.sg.numel():
                 gate = gate * self.sg.view(1, 1, -1)
-            gate = torch.sigmoid(gate)
+            gate = sigmoid_engine(gate)
 
         q = q.view(bsz, q_len, h, d).transpose(1, 2)                # (B, H, Q, D)
         k = k.view(bsz, q_len, kv, d).transpose(1, 2)               # (B, KV, Q, D)
@@ -804,7 +820,7 @@ class DoryANEAttention(nn.Module):
         gate = _from_conv_layout(self.g_proj(_to_conv_layout(hidden_states)))
         if self.sg.numel():
             gate = gate * self.sg.view(1, 1, -1)
-        return torch.sigmoid(gate)
+        return sigmoid_engine(gate)
 
     def _write_full(self, tiles, k, v, current_pos, q_len, write_indices, write_gates):
         """Write the current rows into the full cache -- one cache or two tiles.
@@ -861,7 +877,7 @@ class DoryANEMLP(nn.Module):
         self.gate_proj = _conv1x1(config.hidden_size, config.intermediate_size, dt, accum)
         self.up_proj = _conv1x1(config.hidden_size, config.intermediate_size, dt, accum)
         self.down_proj = _conv1x1(config.intermediate_size, config.hidden_size, dt, accum)
-        self.norm = DoryL2Norm(config.intermediate_size, config.l2_eps)
+        self.norm = DoryL2Norm(config.intermediate_size, config.l2_eps, config.projection_scale)
         if fold_scales:
             self.register_buffer("suv_gate", torch.empty(0))
             self.register_buffer("suv_up", torch.empty(0))
@@ -876,7 +892,7 @@ class DoryANEMLP(nn.Module):
         if self.suv_gate.numel():
             g = g * self.suv_gate.view(1, 1, -1)
             u = u * self.suv_up.view(1, 1, -1)
-        y = self.norm(F.silu(g) * u)
+        y = self.norm(silu_engine(g) * u)
         return _from_conv_layout(self.down_proj(_to_conv_layout(y)))
 
 
@@ -912,7 +928,8 @@ class DoryANEDecoderLayer(nn.Module):
                                           tail_only=tail_only, attn_only=attn_only,
                                           contrib_per_head=contrib_per_head)
         self.norm_in = DoryL2Norm(config.hidden_size, config.l2_eps)
-        self.norm_out = DoryL2Norm(config.hidden_size, config.l2_eps)
+        self.norm_out = DoryL2Norm(config.hidden_size,
+                                   config.l2_eps * config.projection_scale ** 2)
         self.norm_mix = DoryL2Norm(config.hidden_size, config.l2_eps)
         self.register_buffer("alpha", torch.zeros(config.hidden_size, dtype=config.dtype))
         self.slot = 0
